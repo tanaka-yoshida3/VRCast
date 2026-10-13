@@ -22,6 +22,13 @@ namespace VRCast.Core
 
         // 併用: 顔は iFacialMocap、腕・手は同梱の MediaPipe（iFacialMocap が途切れている間は MediaPipe の顔）
         MediaPipeIFacialMocap = 5,
+
+        // 外部アプリ VRCFaceTracking（Quest Pro 等の顔と目）が OSC で送る値（顔のみ。この PC から受信し、
+        // すべての値を送らせる合図をこちらから VRCFaceTracking へ送る）
+        VrcFaceTracking = 6,
+
+        // 併用: 体（頭・腕・手・指）は VMC（VirtualMotionCapture 等）、顔は VRCFaceTracking（届かない間は VMC の顔）
+        VmcVrcFaceTracking = 7,
     }
 
     /// <summary>
@@ -73,6 +80,8 @@ namespace VRCast.Core
                     return TrackingSource.Vmc;
                 case TrackingSource.MediaPipeIFacialMocap:
                     return TrackingSource.IFacialMocap;
+                case TrackingSource.VmcVrcFaceTracking:
+                    return TrackingSource.Vmc;
                 default:
                     return source;
             }
@@ -88,11 +97,19 @@ namespace VRCast.Core
 
         /// <summary>
         /// 全身の姿勢（ボーンごとの回転・体全体の位置）を受信できる入力元なら true。
-        /// 併用では腕・手を MediaPipe で動かすため、VMC の全身は使わない。
+        /// MediaPipe との併用では腕・手を MediaPipe で動かすため、VMC の全身は使わない（VRCFaceTracking との併用では使う）。
         /// </summary>
         public static bool HasFullBody(TrackingSource source)
         {
-            return source == TrackingSource.Vmc;
+            return source == TrackingSource.Vmc || source == TrackingSource.VmcVrcFaceTracking;
+        }
+
+        /// <summary>
+        /// 顔を VRCFaceTracking から受け取る入力元なら true（VRCFaceTracking だけ・VMC の体との併用）。
+        /// </summary>
+        public static bool UsesVrcFaceTracking(TrackingSource source)
+        {
+            return source == TrackingSource.VrcFaceTracking || source == TrackingSource.VmcVrcFaceTracking;
         }
 
         /// <summary>
@@ -113,7 +130,8 @@ namespace VRCast.Core
         }
 
         /// <summary>
-        /// 受信口 1 つ分の入力元の受信ポート（VMC は設定のポート、iFacialMocap はアプリが決めた固定ポート、同梱トラッカーは trackingPort）。
+        /// 受信口 1 つ分の入力元の受信ポート（VMC・VRCFaceTracking は設定のポート、iFacialMocap はアプリが決めた固定ポート、
+        /// 同梱トラッカーは trackingPort）。
         /// </summary>
         public static int PortOf(AppSettings settings, TrackingSource source)
         {
@@ -123,6 +141,8 @@ namespace VRCast.Core
                     return settings.vmcPort;
                 case TrackingSource.IFacialMocap:
                     return AppSettings.IFacialMocapPort;
+                case TrackingSource.VrcFaceTracking:
+                    return settings.vrcftPort;
                 default:
                     return settings.trackingPort;
             }

@@ -49,6 +49,10 @@ namespace VRCast.Core
         // VMC プロトコルの受信ポートの既定値（VMC プロトコルの標準）
         public const int DefaultVmcPort = 39539;
 
+        // VRCFaceTracking の既定の送信先ポート（VRChat の OSC の受信ポート）と、VRCFaceTracking 自身の受信ポート
+        public const int DefaultVrcftPort = 9000;
+        public const int DefaultVrcftCommandPort = 9001;
+
         // iFacialMocap のポート（アプリ側で固定。送信開始の合図の宛先と、受信の待ち受けの両方に使う）
         public const int IFacialMocapPort = 49983;
 
@@ -246,6 +250,11 @@ namespace VRCast.Core
 
         // iFacialMocap を動かしている iPhone の IP アドレス（送信開始の合図の宛先。空なら未設定）
         public string iFacialMocapAddress = string.Empty;
+
+        // VRCFaceTracking から顔の値を受け取るポート（VRCFaceTracking の送信先。この PC からのみ受信する）と、
+        // すべての値を送らせる合図を送る VRCFaceTracking の受信ポート
+        public int vrcftPort = DefaultVrcftPort;
+        public int vrcftCommandPort = DefaultVrcftCommandPort;
         public float trackingBodyLean = 1f;
         public BodyMotion trackingBodyMotion = BodyMotion.Lean;
         public float trackingGaze = 1f;
@@ -953,6 +962,9 @@ namespace VRCast.Core
             trackingPort = Mathf.Clamp(trackingPort, MinTrackingPort, MaxTrackingPort);
             // VMC の受信ポートも同じ範囲に制限
             vmcPort = Mathf.Clamp(vmcPort, MinTrackingPort, MaxTrackingPort);
+            // VRCFaceTracking のポートも同じ範囲に制限
+            vrcftPort = Mathf.Clamp(vrcftPort, MinTrackingPort, MaxTrackingPort);
+            vrcftCommandPort = Mathf.Clamp(vrcftCommandPort, MinTrackingPort, MaxTrackingPort);
             // 自動リセットの間隔は範囲内へ（壊れた値は既定へ）
             autoResetIntervalMinutes = float.IsNaN(autoResetIntervalMinutes) || float.IsInfinity(autoResetIntervalMinutes)
                 ? DefaultAutoResetIntervalMinutes

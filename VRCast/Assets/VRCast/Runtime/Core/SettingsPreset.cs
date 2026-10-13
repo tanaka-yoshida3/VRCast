@@ -180,6 +180,8 @@ namespace VRCast.Core
             nameof(AppSettings.trackingPort),
             nameof(AppSettings.vmcPort),
             nameof(AppSettings.iFacialMocapAddress),
+            nameof(AppSettings.vrcftPort),
+            nameof(AppSettings.vrcftCommandPort),
             nameof(AppSettings.remoteOscPort),
             nameof(AppSettings.remoteHttpPort),
         };

@@ -23,6 +23,10 @@ namespace VRCast.UI
         private string _portInput;
         private string _vmcPortInput;
 
+        // 入力途中の VRCFaceTracking のポート文字列（受け取るポートと、合図を送る VRCFaceTracking の受信ポート）
+        private string _vrcftPortInput;
+        private string _vrcftCommandPortInput;
+
         // この PC の LAN のアドレス（VMC の送信先として表示。取得に時間がかかることがあるため間隔を空けて取り直す）
         private const float AddressRefreshSeconds = 5f;
         private List<string> _localAddresses = new List<string>();
@@ -68,6 +72,8 @@ namespace VRCast.UI
         {
             _portInput = _settings.trackingPort.ToString();
             _vmcPortInput = _settings.vmcPort.ToString();
+            _vrcftPortInput = _settings.vrcftPort.ToString();
+            _vrcftCommandPortInput = _settings.vrcftCommandPort.ToString();
         }
 
         public void Draw()
@@ -118,6 +124,12 @@ namespace VRCast.UI
                     DrawIFacialMocapConnection();
                 }
 
+                // VRCFaceTracking（単独・VMC の体との併用）は、受け取るポートと VRCFaceTracking の受信ポート
+                if (TrackingSourceInfo.UsesVrcFaceTracking(_settings.trackingSource))
+                {
+                    DrawVrcftConnection();
+                }
+
                 DrawSourceFeatures();
                 DrawBlink();
 
@@ -162,6 +174,12 @@ namespace VRCast.UI
                 Loc.T("iFacialMocap face + MediaPipe hands", "iFacialMocap の顔 + MediaPipe の手",
                     "iFacialMocap 얼굴 + MediaPipe 손", "iFacialMocap 面部 + MediaPipe 手",
                     "iFacialMocap 臉部 + MediaPipe 手"),
+                Loc.T("VRCFaceTracking (Quest Pro etc., face only)", "VRCFaceTracking（Quest Pro など、顔のみ）",
+                    "VRCFaceTracking (Quest Pro 등, 얼굴만)", "VRCFaceTracking（Quest Pro 等，仅面部）",
+                    "VRCFaceTracking（Quest Pro 等，僅臉部）"),
+                Loc.T("VMC body + VRCFaceTracking face", "VMC の体 + VRCFaceTracking の顔",
+                    "VMC 몸 + VRCFaceTracking 얼굴", "VMC 身体 + VRCFaceTracking 面部",
+                    "VMC 身體 + VRCFaceTracking 臉部"),
             };
             // 注記を横に並べるかは Layout のときだけ決める（Layout と Repaint で要素の数を変えない）
             if (Event.current.type == EventType.Layout)
@@ -316,6 +334,26 @@ namespace VRCast.UI
                     "얼굴은 iPhone, 팔·손은 웹캠 (MediaPipe)에서 받습니다. iPhone에서 데이터가 오지 않는 동안에는 웹캠의 얼굴을 사용합니다.",
                     "面部来自 iPhone，手臂和手来自摄像头（MediaPipe）。iPhone 没有数据时改用摄像头的面部。",
                     "臉部來自 iPhone，手臂和手來自網路攝影機（MediaPipe）。iPhone 沒有資料時改用網路攝影機的臉部。"));
+            }
+
+            // VRCFaceTracking では、顔と体をどこから受け取るかを伝える
+            if (_settings.trackingSource == TrackingSource.VmcVrcFaceTracking)
+            {
+                GuiControls.Hint(Loc.T(
+                    "The head, body, arms and fingers come from the VMC app (e.g. VirtualMotionCapture) and the face and eyes from VRCFaceTracking. While nothing arrives from VRCFaceTracking, the VMC app's face is used instead.",
+                    "頭・体・腕・指は VMC のアプリ（VirtualMotionCapture など）、顔と目は VRCFaceTracking から受け取ります。VRCFaceTracking から届かない間は VMC のアプリの顔を使います。",
+                    "머리·몸·팔·손가락은 VMC 앱 (VirtualMotionCapture 등), 얼굴과 눈은 VRCFaceTracking에서 받습니다. VRCFaceTracking에서 데이터가 오지 않는 동안에는 VMC 앱의 얼굴을 사용합니다.",
+                    "头部、身体、手臂和手指来自 VMC 应用（如 VirtualMotionCapture），面部和眼睛来自 VRCFaceTracking。VRCFaceTracking 没有数据时改用 VMC 应用的面部。",
+                    "頭部、身體、手臂和手指來自 VMC 應用程式（如 VirtualMotionCapture），臉部和眼睛來自 VRCFaceTracking。VRCFaceTracking 沒有資料時改用 VMC 應用程式的臉部。"));
+            }
+            else if (_settings.trackingSource == TrackingSource.VrcFaceTracking)
+            {
+                GuiControls.Hint(Loc.T(
+                    "VRCFaceTracking sends the face and eyes only, not the head direction. To move the head and body too, use \"VMC body + VRCFaceTracking face\".",
+                    "VRCFaceTracking から届くのは顔と目だけで、頭の向きは届きません。頭や体も動かすときは「VMC の体 + VRCFaceTracking の顔」を使ってください。",
+                    "VRCFaceTracking에서는 얼굴과 눈만 오고 머리 방향은 오지 않습니다. 머리와 몸도 움직이려면 'VMC 몸 + VRCFaceTracking 얼굴'을 사용하세요.",
+                    "VRCFaceTracking 只发送面部和眼睛，不发送头部朝向。如需同时移动头部和身体，请使用“VMC 身体 + VRCFaceTracking 面部”。",
+                    "VRCFaceTracking 只傳送臉部和眼睛，不傳送頭部朝向。如需同時移動頭部和身體，請使用「VMC 身體 + VRCFaceTracking 臉部」。"));
             }
 
             // トラッカーの動作は同梱の MediaPipe 版（併用を含む）のみ
@@ -550,6 +588,33 @@ namespace VRCast.UI
                 _settings.vmcPort, AppSettings.MinTrackingPort, AppSettings.MaxTrackingPort);
 
             DrawFirewallHint();
+        }
+
+        private void DrawVrcftConnection()
+        {
+            // VRCFaceTracking の使い方（VRCast からすべての値を送るよう頼むので、アバター側の準備は要らない）
+            GuiControls.SubHeading("VRCFaceTracking");
+            GuiControls.Hint(Loc.T(
+                "Start VRCFaceTracking on this PC with the module for your headset (for Quest Pro: Virtual Desktop, Steam Link, etc.). VRCast asks VRCFaceTracking to send all values, so no avatar setup is needed. VRChat uses the same port, so don't run VRChat at the same time.",
+                "この PC で VRCFaceTracking を起動し、ヘッドセットのモジュール（Quest Pro なら Virtual Desktop・Steam Link など）を入れてください。VRCast からすべての値を送るよう頼むので、アバター側の準備は要りません。VRChat も同じポートを使うので、VRChat とは同時に起動しないでください。",
+                "이 PC에서 VRCFaceTracking을 실행하고 헤드셋용 모듈 (Quest Pro는 Virtual Desktop·Steam Link 등)을 설치하세요. VRCast가 VRCFaceTracking에 모든 값을 보내도록 요청하므로 아바터 쪽 준비는 필요 없습니다. VRChat도 같은 포트를 사용하므로 VRChat과 동시에 실행하지 마세요.",
+                "在此电脑上启动 VRCFaceTracking，并安装对应头显的模块（Quest Pro 可用 Virtual Desktop、Steam Link 等）。VRCast 会请求 VRCFaceTracking 发送所有值，因此无需准备虚拟形象。VRChat 使用相同端口，请勿同时启动 VRChat。",
+                "在此電腦上啟動 VRCFaceTracking，並安裝對應頭戴裝置的模組（Quest Pro 可用 Virtual Desktop、Steam Link 等）。VRCast 會請求 VRCFaceTracking 傳送所有值，因此不需準備虛擬形象。VRChat 使用相同連接埠，請勿同時啟動 VRChat。"));
+
+            // 受け取るポート（VRCFaceTracking の OSC の送信先）と、合図を送る VRCFaceTracking の受信ポート（どちらも既定のままでよい）
+            _settings.vrcftPort = GuiControls.PortField(
+                Loc.T("Receive port", "受け取るポート", "수신 포트", "接收端口", "接收連接埠"), ref _vrcftPortInput,
+                _settings.vrcftPort, AppSettings.MinTrackingPort, AppSettings.MaxTrackingPort);
+            _settings.vrcftCommandPort = GuiControls.PortField(
+                Loc.T("VRCFaceTracking's port", "VRCFaceTracking のポート", "VRCFaceTracking 포트", "VRCFaceTracking 的端口",
+                    "VRCFaceTracking 的連接埠"), ref _vrcftCommandPortInput,
+                _settings.vrcftCommandPort, AppSettings.MinTrackingPort, AppSettings.MaxTrackingPort);
+            GuiControls.Hint(Loc.T(
+                "Defaults: receive 9000, VRCFaceTracking 9001 (the OSC ports in VRCFaceTracking's settings). Only this PC is used.",
+                "既定は 受け取る 9000・VRCFaceTracking 9001 です（VRCFaceTracking の設定の OSC のポート）。この PC の中だけでやりとりします。",
+                "기본값: 수신 9000, VRCFaceTracking 9001 (VRCFaceTracking 설정의 OSC 포트). 이 PC 안에서만 주고받습니다.",
+                "默认：接收 9000，VRCFaceTracking 9001（VRCFaceTracking 设置中的 OSC 端口）。仅在此电脑内通信。",
+                "預設：接收 9000，VRCFaceTracking 9001（VRCFaceTracking 設定中的 OSC 連接埠）。僅在此電腦內通訊。"));
         }
 
         private void DrawIFacialMocapConnection()

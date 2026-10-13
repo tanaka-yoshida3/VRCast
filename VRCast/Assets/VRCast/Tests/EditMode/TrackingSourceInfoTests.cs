@@ -47,6 +47,34 @@ namespace VRCast.Tests
         }
 
         [Test]
+        public void VrcFaceTracking_FaceOnlyFromThisPc()
+        {
+            var settings = new AppSettings { vrcftPort = 9100 };
+
+            // VRCFaceTracking だけ: 同梱トラッカーは起動せず、顔（ARKit 値）だけを設定のポートで、この PC から受け取る
+            Assert.That(TrackingSourceInfo.UsesVrcFaceTracking(TrackingSource.VrcFaceTracking), Is.True);
+            Assert.That(TrackingSourceInfo.UsesBundledTracker(TrackingSource.VrcFaceTracking), Is.False);
+            Assert.That(TrackingSourceInfo.HasArKit(TrackingSource.VrcFaceTracking), Is.True);
+            Assert.That(TrackingSourceInfo.HasArms(TrackingSource.VrcFaceTracking), Is.False);
+            Assert.That(TrackingSourceInfo.HasFullBody(TrackingSource.VrcFaceTracking), Is.False);
+            Assert.That(TrackingSourceInfo.ReceivesFromNetwork(TrackingSource.VrcFaceTracking), Is.False);
+            Assert.That(TrackingSourceInfo.PortOf(settings, TrackingSource.VrcFaceTracking), Is.EqualTo(9100));
+        }
+
+        [Test]
+        public void VmcBodyWithVrcFaceTracking_UsesVmcForTheBody()
+        {
+            // VMC の体との併用: 体の受信口は VMC（全身を使う）で、MediaPipe とは関係しない
+            const TrackingSource source = TrackingSource.VmcVrcFaceTracking;
+            Assert.That(TrackingSourceInfo.NetworkSourceOf(source), Is.EqualTo(TrackingSource.Vmc));
+            Assert.That(TrackingSourceInfo.UsesVrcFaceTracking(source), Is.True);
+            Assert.That(TrackingSourceInfo.HasFullBody(source), Is.True);
+            Assert.That(TrackingSourceInfo.IsHybrid(source), Is.False);
+            Assert.That(TrackingSourceInfo.UsesBundledTracker(source), Is.False);
+            Assert.That(TrackingSourceInfo.HasArms(source), Is.False);
+        }
+
+        [Test]
         public void ReceivesFromNetwork_OnlyPhoneApps()
         {
             // LAN から受けるのは外部アプリの受信口だけ（同梱トラッカーは 127.0.0.1）

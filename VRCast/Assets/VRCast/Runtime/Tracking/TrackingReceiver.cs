@@ -9,6 +9,8 @@ namespace VRCast.Tracking
     /// iFacialMocap（顔のみ）を受け取る。
     /// 併用の入力元では、iPhone 等の外部アプリ（VMC / iFacialMocap）と同梱の MediaPipe の 2 つの受信口を同時に開き、
     /// 顔は外部アプリ（途切れている間は MediaPipe）、腕・手は MediaPipe から渡す。
+    /// VMC の体と VRCFaceTracking の顔の併用では、VMC と VRCFaceTracking の 2 つの受信口を開き、
+    /// 体（全身の姿勢）と頭の向きは VMC、顔の値は VRCFaceTracking（途切れている間は VMC の顔）から渡す。
     /// </summary>
     public class TrackingReceiver : MonoBehaviour, IFaceTrackingProvider, IBodyTrackingProvider, IHumanoidPoseProvider
     {
@@ -18,10 +20,16 @@ namespace VRCast.Tracking
         // 併用のときだけ使う MediaPipe の受信口
         private readonly TrackingChannel _camera = new TrackingChannel();
 
+        // VMC の体との併用のときだけ使う VRCFaceTracking の受信口
+        private readonly TrackingChannel _vrcft = new TrackingChannel();
+
         private AppSettings _settings;
 
         // 併用中なら true（Update で設定から決める）
         private bool _hybrid;
+
+        // VMC の体と VRCFaceTracking の顔の併用中なら true
+        private bool _vmcWithVrcft;
 
         public string Status { get; private set; } = "Disabled";
 
@@ -30,8 +38,10 @@ namespace VRCast.Tracking
         /// </summary>
         public TrackingSource FaceSource { get; private set; }
 
-        // 併用で MediaPipe の顔を使っている間はそのレート、それ以外は設定の入力元のレート
-        public int FramesPerSecond => UsesCameraFace ? _camera.FramesPerSecond : _main.FramesPerSecond;
+        // 併用で MediaPipe・VRCFaceTracking の顔を使っている間はそのレート、それ以外は設定の入力元のレート
+        public int FramesPerSecond => UsesCameraFace ? _camera.FramesPerSecond
+            : _vmcWithVrcft && _vrcft.TryGetFrame(out _) ? _vrcft.FramesPerSecond
+            : _main.FramesPerSecond;
 
         public void Initialize(AppSettings settings)
         {
@@ -40,6 +50,18 @@ namespace VRCast.Tracking
 
         public bool TryGetFrame(out FaceTrackingFrame frame)
         {
+            // VRCFaceTracking との併用は、VRCFaceTracking の顔に VMC の頭の向きを重ねる（届かない間は VMC の顔）
+            if (_vmcWithVrcft && _vrcft.TryGetFrame(out frame))
+            {
+                if (_main.TryGetFrame(out FaceTrackingFrame body))
+                {
+                    frame.HeadRotation = body.HeadRotation;
+                    frame.HeadPosition = body.HeadPosition;
+                }
+
+                return true;
+            }
+
             // 外部アプリの顔を優先し、併用で途切れている間だけ MediaPipe の顔を使う
             if (_main.TryGetFrame(out frame))
             {
@@ -77,6 +99,7 @@ namespace VRCast.Tracking
             {
                 _main.Stop("Disabled");
                 _camera.Stop("Disabled");
+                _vrcft.Stop("Disabled");
                 Status = "Disabled";
                 return;
             }
@@ -90,14 +113,29 @@ namespace VRCast.Tracking
                 _camera.Stop("Not used");
             }
 
+            _vmcWithVrcft = source == TrackingSource.VmcVrcFaceTracking;
+            if (!_vmcWithVrcft)
+            {
+                _vrcft.Stop("Not used");
+            }
+
             _main.Update(_settings, TrackingSourceInfo.NetworkSourceOf(source));
             if (_hybrid)
             {
                 _camera.Update(_settings, TrackingSource.MediaPipe);
             }
 
+            if (_vmcWithVrcft)
+            {
+                _vrcft.Update(_settings, TrackingSource.VrcFaceTracking);
+            }
+
             // 顔を受け取っている入力元（受信していない間は前の値のまま。正面の取り直しの判定に使う）
-            if (_main.TryGetFrame(out _))
+            if (_vmcWithVrcft && _vrcft.TryGetFrame(out _))
+            {
+                FaceSource = TrackingSource.VrcFaceTracking;
+            }
+            else if (_main.TryGetFrame(out _))
             {
                 FaceSource = _main.BoundSource;
             }
@@ -110,7 +148,9 @@ namespace VRCast.Tracking
             Status = _hybrid
                 ? $"{_main.BoundSource}: {_main.Status} / MediaPipe: {_camera.Status}"
                   + (UsesCameraFace ? " (using the webcam face)" : string.Empty)
-                : _main.Status;
+                : _vmcWithVrcft
+                    ? $"VMC: {_main.Status} / VRCFaceTracking: {_vrcft.Status}"
+                    : _main.Status;
         }
 
         private void OnDestroy()
@@ -118,6 +158,7 @@ namespace VRCast.Tracking
             // 終了時にポートを解放
             _main.Close("Stopped");
             _camera.Close("Stopped");
+            _vrcft.Close("Stopped");
         }
     }
 }

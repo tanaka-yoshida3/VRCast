@@ -601,6 +601,23 @@ PC のアプリ（VirtualMotionCapture など）から VMC プロトコル（OSC
 - VMC の全身（**Full body**）は使わない（腕・手は MediaPipe で動かすため）。
 - 受信口は 2 つ（iPhone 用は LAN の全アドレス、MediaPipe 用は `127.0.0.1`）。パネル下部の **Tracking** の受信レートは、いま顔を動かしている側の値を出す。
 
+#### VRCFaceTracking（Quest Pro など）
+
+入力元を **VRCFaceTracking (Quest Pro etc., face only)** または **VMC body + VRCFaceTracking face** にすると、
+[VRCFaceTracking](https://github.com/benaclejames/VRCFaceTracking) が VRChat 向けに OSC で送る顔と目の値（Unified Expressions v2）を受け取る。
+
+1. この PC で VRCFaceTracking を起動し、ヘッドセットのモジュール（Quest Pro なら Virtual Desktop・Steam Link など）を入れる。
+2. VRCast は VRCFaceTracking の受信ポート（既定 9001）へ `/vrcft/settings/forceRelevant`（true）を 2 秒ごとに送り、
+   アバターの有無に関係なくすべての値を送らせる（VRChat の起動・アバター側のパラメーターの準備は要らない）。
+3. 値は受け取るポート（既定 9000、VRCFaceTracking の送信先）で受け取る。どちらもこの PC（`127.0.0.1`）の中だけでやりとりする。
+
+- 使うのは `/avatar/parameters/v2/名前` の float だけ（同じ名前の bool・2 進数は使わない）。変わった値だけが届くので、値は受信のたびに上書きして保持する。
+- Unified Expressions を ARKit の 51 種へ写し（左右の組・唇の上下は平均、まばたきは `EyeOpen`（無ければ `EyeLid`）、視線は `EyeLeftX` 等）、
+  iFacialMocap と同じく本人基準の左右として扱う。パーフェクトシンク・表情の反映・まばたき・視線に使う。
+- 頭の向きは届かない。**VMC body + VRCFaceTracking face** では頭・体・腕・指を VMC（VirtualMotionCapture など）から受け取り、
+  頭の向きも VMC の値を使う（全身は **Full body** で ON/OFF）。VRCFaceTracking から届かない間は VMC の顔（VRM の表情名）を使う。
+- VRChat も同じポートを使うため、VRChat とは同時に使えない（VRChat を起動していると VRCFaceTracking は VRChat へ送る）。
+
 **Display** タブでカメラ（固定・画角・リセット）とウィンドウ解像度（1280x720 / 1920x1080 / 縦長 720x1280 / 1080x1920）を、
 **Graphics** タブで背景（透過 / 単色）・ライト・輪郭線を変更できる。
 
