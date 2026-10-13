@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -10,6 +11,7 @@ namespace VRCast.Tracking
     /// トラッカーの UDP 出力を受信する口 1 つ分。入力元 1 つ（OpenSeeFace・MediaPipe・VMC・iFacialMocap）の形式で解析する。
     /// 同梱トラッカーは 127.0.0.1 にのみ bind し、外部アプリ（iPhone 等から LAN 経由で届く）だけ全アドレスで待ち受ける。
     /// iFacialMocap はデータが来ない間、設定の iPhone へ送信開始の合図を同じソケットから送り続ける。
+    /// 外部アプリの受信口では、設定で送り主をしぼっているとき、一覧にない IP アドレスからのパケットを読まずに捨てる（SenderFilter）。
     /// スレッドを使わず、TrackingReceiver の Update から毎フレーム呼ばれてポーリングする。
     /// </summary>
     public sealed class TrackingChannel
@@ -100,7 +102,35 @@ namespace VRCast.Tracking
         private bool _receivedSinceOpen;
         private bool _warnedNoData;
 
+        // 送り主のしぼり込み: 解析済みの一覧と、その元の設定の文字列（変わったときだけ解析し直す）
+        private List<IPAddress> _allowedSenders = new List<IPAddress>();
+        private string _allowedSendersText;
+
+        // 送り主の表示: 最後に届いた送り主・最後に捨てた送り主（変わったときだけ文字列を作る）
+        private IPAddress _lastSender;
+        private IPAddress _lastRejectedSender;
+        private float _lastRejectTime = float.NegativeInfinity;
+
+        // しぼり込みで捨てたことを警告する最短間隔（秒）と、次に警告してよい時刻
+        private const float RejectWarningInterval = 10f;
+        private float _nextRejectWarningTime;
+
         public string Status { get; private set; } = "Disabled";
+
+        /// <summary>
+        /// 最後にパケットが届いた送り主の IP アドレス（受け取ったかどうかは問わない。まだ無ければ空）。
+        /// </summary>
+        public string LastSender { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// 送り主のしぼり込みで最後に捨てた送り主の IP アドレス（無ければ空）。
+        /// </summary>
+        public string LastRejectedSender { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// 待ち受けを始めてから、送り主のしぼり込みで捨てたパケットの数。
+        /// </summary>
+        public int RejectedPackets { get; private set; }
 
         /// <summary>
         /// 待ち受け中の入力元（未 bind の間は最後に待ち受けた入力元）。
@@ -195,6 +225,9 @@ namespace VRCast.Tracking
                 _receivedSinceOpen = false;
                 _warnedNoData = false;
                 _nextStartCommandTime = 0f;
+                RejectedPackets = 0;
+                _lastRejectedSender = null;
+                LastRejectedSender = string.Empty;
 
                 // 前の待ち受けで受け取った VMC の値を持ち越さない
                 _vmc.Reset();
@@ -266,6 +299,16 @@ namespace VRCast.Tracking
                 {
                     // 1 パケット受信して入力元の形式で解析（不正なものは捨てる）
                     int length = _socket.ReceiveFrom(_buffer, ref remote);
+
+                    // 送り主をしぼっているとき、一覧にない送り主のパケットは読まずに捨てる（届いたことだけ記録する）
+                    IPAddress sender = SenderFilter.Normalize((remote as IPEndPoint)?.Address);
+                    NoteSender(sender);
+                    if (!Accepts(sender))
+                    {
+                        Reject(sender);
+                        continue;
+                    }
+
                     _statPackets++;
                     _statBytes += length;
                     _lastPacketTime = Time.unscaledTime;
@@ -302,6 +345,54 @@ namespace VRCast.Tracking
                 // 受信エラーは閉じて再試行に任せる
                 Close($"Receive error: {e.SocketErrorCode}");
                 VRCastLog.Warning(LogCategory, Status);
+            }
+        }
+
+        private bool Accepts(IPAddress sender)
+        {
+            // しぼり込みは外部アプリの受信口で、設定が ON のときだけ（同梱トラッカーは 127.0.0.1 でしか待ち受けない）
+            if (!TrackingSourceInfo.ReceivesFromNetwork(_boundSource) || !_settings.trackingSenderFilter)
+            {
+                return true;
+            }
+
+            // 一覧の文字列が変わったときだけ解析し直す（毎パケットの負荷を抑える）
+            if (!string.Equals(_allowedSendersText, _settings.trackingAllowedSenders, System.StringComparison.Ordinal))
+            {
+                _allowedSendersText = _settings.trackingAllowedSenders;
+                _allowedSenders = SenderFilter.Parse(_allowedSendersText);
+            }
+
+            return SenderFilter.IsAllowed(sender, _allowedSenders);
+        }
+
+        private void NoteSender(IPAddress sender)
+        {
+            // 送り主が変わったときだけ表示用の文字列を作る
+            if (sender != null && !sender.Equals(_lastSender))
+            {
+                _lastSender = sender;
+                LastSender = sender.ToString();
+            }
+        }
+
+        private void Reject(IPAddress sender)
+        {
+            RejectedPackets++;
+            _lastRejectTime = Time.unscaledTime;
+            if (sender != null && !sender.Equals(_lastRejectedSender))
+            {
+                _lastRejectedSender = sender;
+                LastRejectedSender = sender.ToString();
+            }
+
+            // 同じ送り主から毎フレーム届くため、間隔を空けて警告する（件数は UI に出る）
+            float now = Time.unscaledTime;
+            if (now >= _nextRejectWarningTime)
+            {
+                _nextRejectWarningTime = now + RejectWarningInterval;
+                VRCastLog.Warning(LogCategory,
+                    $"Ignored {_boundSource} data from {LastRejectedSender} (not in the allowed senders)");
             }
         }
 
@@ -475,7 +566,9 @@ namespace VRCast.Tracking
             if (!_receivedSinceOpen && !_warnedNoData && now - _listenStart > NoDataWarningSeconds)
             {
                 _warnedNoData = true;
-                string hint = _boundSource == TrackingSource.Vmc
+                string hint = RejectedPackets > 0
+                    ? $"data arrives from {LastRejectedSender}, which is not in the allowed senders"
+                    : _boundSource == TrackingSource.Vmc
                     ? "wrong IP address or port in the sender app, a different network, or blocked by Windows Firewall?"
                     : _boundSource == TrackingSource.IFacialMocap
                         ? "wrong iPhone IP address, iFacialMocap not open, a different network, or blocked by Windows Firewall?"
@@ -581,6 +674,11 @@ namespace VRCast.Tracking
             {
                 // 合図を送れないので、iPhone の IP アドレスの入力を促す
                 Status = $"Listening on {_boundAddress}:{_boundPort} (enter the iPhone's IP address)";
+            }
+            else if (Time.unscaledTime - _lastRejectTime <= StaleSeconds)
+            {
+                // 届いているが、送り主のしぼり込みで捨てている
+                Status = $"Listening on {_boundAddress}:{_boundPort} (ignoring {LastRejectedSender}: not an allowed sender)";
             }
             else
             {

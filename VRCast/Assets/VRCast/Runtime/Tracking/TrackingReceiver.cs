@@ -10,7 +10,8 @@ namespace VRCast.Tracking
     /// 併用の入力元では、iPhone 等の外部アプリ（VMC / iFacialMocap）と同梱の MediaPipe の 2 つの受信口を同時に開き、
     /// 顔は外部アプリ（途切れている間は MediaPipe）、腕・手は MediaPipe から渡す。
     /// </summary>
-    public class TrackingReceiver : MonoBehaviour, IFaceTrackingProvider, IBodyTrackingProvider, IHumanoidPoseProvider
+    public class TrackingReceiver : MonoBehaviour, IFaceTrackingProvider, IBodyTrackingProvider, IHumanoidPoseProvider,
+        INetworkSenderInfo
     {
         // 設定の入力元の受信口（併用では外部アプリ側）
         private readonly TrackingChannel _main = new TrackingChannel();
@@ -29,6 +30,13 @@ namespace VRCast.Tracking
         /// 顔のフレームを受け取っている入力元（併用では外部アプリか MediaPipe か。受信していない間は最後の値）。
         /// </summary>
         public TrackingSource FaceSource { get; private set; }
+
+        // 送り主の情報は外部アプリの受信口（併用でも設定の入力元側）のもの
+        public string LastSender => _main.LastSender;
+
+        public string LastRejectedSender => _main.LastRejectedSender;
+
+        public int RejectedPackets => _main.RejectedPackets;
 
         // 併用で MediaPipe の顔を使っている間はそのレート、それ以外は設定の入力元のレート
         public int FramesPerSecond => UsesCameraFace ? _camera.FramesPerSecond : _main.FramesPerSecond;
