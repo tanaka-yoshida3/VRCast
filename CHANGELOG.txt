@@ -9,10 +9,12 @@ Newest first. Each version is written in Japanese, then English.
 [日本語]
 - 設定プリセットの書き出しを JSON ファイル（.json）に変更（以前の版で書き出した .vrcastpreset もこれまでどおり読み込めます）
 - トラッキングの入力元に「VRCFaceTracking（Quest Pro など、顔のみ）」と「VMC の体 + VRCFaceTracking の顔」を追加（Quest Pro などの顔と目の値を、VRCFaceTracking から受け取ります。VRCast から VRCFaceTracking へすべての値を送るよう頼むので、VRChat の起動やアバター側の準備は要りません。値は ARKit の形に直して、パーフェクトシンク・表情の反映・まばたき・視線に使います。併用では、頭・体・腕・指を VirtualMotionCapture などの VMC から受け取ります。VRChat と同じポートを使うため、VRChat とは同時に使えません）
+- トラッキングタブ（VMC・iFacialMocap の接続欄）に「下の送り主（IP アドレス）からだけ受け取る」を追加（ON にすると、一覧に入れた IP アドレスと、この PC（127.0.0.1）のアプリからだけ受け取り、同じネットワークのほかの機械から届いたデータは読まずに捨てます。最後に届いた送り主を表示し、「この送り主だけにする」ボタンで一覧に入れられます。既定 OFF で、OFF ならこれまでどおりです）
 
 [English]
 - Changed settings presets to be exported as JSON files (.json); presets saved by older versions (.vrcastpreset) can still be loaded
 - Added "VRCFaceTracking (Quest Pro etc., face only)" and "VMC body + VRCFaceTracking face" tracking sources (receives face and eye values from headsets such as Quest Pro through VRCFaceTracking. VRCast asks VRCFaceTracking to send all values, so neither VRChat nor any avatar setup is needed. The values are converted to ARKit shapes and used for perfect sync, expressions, blinking and gaze. In the combination, the head, body, arms and fingers come from a VMC app such as VirtualMotionCapture. It uses the same port as VRChat, so it cannot be used while VRChat is running)
+- Added "Only receive from the senders below (by IP address)" to the VMC / iFacialMocap connection settings in the Tracking tab (when on, data is accepted only from the listed IP addresses and from apps on this PC (127.0.0.1); data from other devices on the same network is dropped without being read. The last sender is shown, and "Only this sender" puts it in the list. Off by default, which keeps the previous behavior)
 
 ■ 2.1.0 (2026-10-13)
 

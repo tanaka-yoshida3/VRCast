@@ -255,6 +255,13 @@ namespace VRCast.Core
         // すべての値を送らせる合図を送る VRCFaceTracking の受信ポート
         public int vrcftPort = DefaultVrcftPort;
         public int vrcftCommandPort = DefaultVrcftCommandPort;
+
+        // 外部アプリ（VMC・iFacialMocap）から受け取る送り主を、trackingAllowedSenders の IP アドレスだけにしぼる
+        // （この PC からはいつでも受け取る。既定 OFF = 同じネットワークのどこからでも受け取る、これまでの動き）
+        public bool trackingSenderFilter;
+
+        // しぼるときに受け取る送り主の IP アドレス（カンマ区切り。空なら この PC からだけ）
+        public string trackingAllowedSenders = string.Empty;
         public float trackingBodyLean = 1f;
         public BodyMotion trackingBodyMotion = BodyMotion.Lean;
         public float trackingGaze = 1f;
@@ -971,6 +978,8 @@ namespace VRCast.Core
                 : Mathf.Clamp(autoResetIntervalMinutes, MinAutoResetIntervalMinutes, MaxAutoResetIntervalMinutes);
             // iPhone の IP アドレスは前後の空白を除く（null は未設定の空文字へ）
             iFacialMocapAddress = (iFacialMocapAddress ?? string.Empty).Trim();
+            // 受け取る送り主の一覧も同様（解析は受信側で行う。読めない項目は UI で知らせる）
+            trackingAllowedSenders = (trackingAllowedSenders ?? string.Empty).Trim();
             // 外部操作のポートも同じ範囲に制限
             remoteOscPort = Mathf.Clamp(remoteOscPort, MinTrackingPort, MaxTrackingPort);
             remoteHttpPort = Mathf.Clamp(remoteHttpPort, MinTrackingPort, MaxTrackingPort);

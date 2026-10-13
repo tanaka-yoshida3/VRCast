@@ -12,7 +12,8 @@ namespace VRCast.Tracking
     /// VMC の体と VRCFaceTracking の顔の併用では、VMC と VRCFaceTracking の 2 つの受信口を開き、
     /// 体（全身の姿勢）と頭の向きは VMC、顔の値は VRCFaceTracking（途切れている間は VMC の顔）から渡す。
     /// </summary>
-    public class TrackingReceiver : MonoBehaviour, IFaceTrackingProvider, IBodyTrackingProvider, IHumanoidPoseProvider
+    public class TrackingReceiver : MonoBehaviour, IFaceTrackingProvider, IBodyTrackingProvider, IHumanoidPoseProvider,
+        INetworkSenderInfo
     {
         // 設定の入力元の受信口（併用では外部アプリ側）
         private readonly TrackingChannel _main = new TrackingChannel();
@@ -37,6 +38,13 @@ namespace VRCast.Tracking
         /// 顔のフレームを受け取っている入力元（併用では外部アプリか MediaPipe か。受信していない間は最後の値）。
         /// </summary>
         public TrackingSource FaceSource { get; private set; }
+
+        // 送り主の情報は外部アプリの受信口（併用でも設定の入力元側）のもの
+        public string LastSender => _main.LastSender;
+
+        public string LastRejectedSender => _main.LastRejectedSender;
+
+        public int RejectedPackets => _main.RejectedPackets;
 
         // 併用で MediaPipe・VRCFaceTracking の顔を使っている間はそのレート、それ以外は設定の入力元のレート
         public int FramesPerSecond => UsesCameraFace ? _camera.FramesPerSecond

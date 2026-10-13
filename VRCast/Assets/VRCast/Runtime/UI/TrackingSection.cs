@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Net;
 using UnityEngine;
 using VRCast.Animations;
 using VRCast.Avatars;
@@ -45,6 +46,14 @@ namespace VRCast.UI
 
         // iPhone の IP アドレスの入力欄の最大文字数（IPv4 の最長 15 文字に余裕を持たせる）
         private const int MaxAddressLength = 40;
+
+        // 受け取る送り主の一覧の入力欄の最大文字数（IPv4 を 10 個ほど並べられる長さ）
+        private const int MaxSendersLength = 200;
+
+        // 受け取る送り主の一覧の解析結果（入力欄の文字列が変わったときだけ解析し直す）と、読めなかった項目
+        private string _parsedSendersText;
+        private List<IPAddress> _parsedSenders = new List<IPAddress>();
+        private readonly List<string> _invalidSenders = new List<string>();
 
         // 表情の割り当ての候補（先頭は「割り当てなし」、以降は表情プリセット名）と、作成元のコントローラー
         private readonly List<string> _expressionOptions = new List<string>();
@@ -587,6 +596,7 @@ namespace VRCast.UI
                 Loc.T("UDP port", "UDP ポート", "UDP 포트", "UDP 端口", "UDP 連接埠"), ref _vmcPortInput,
                 _settings.vmcPort, AppSettings.MinTrackingPort, AppSettings.MaxTrackingPort);
 
+            DrawSenderFilter();
             DrawFirewallHint();
         }
 
@@ -644,7 +654,97 @@ namespace VRCast.UI
             // ポートはアプリ側で固定
             GuiControls.Hint(Loc.T("UDP port", "UDP ポート", "UDP 포트", "UDP 端口", "UDP 連接埠") + ": "
                 + AppSettings.IFacialMocapPort);
+            DrawSenderFilter();
             DrawFirewallHint();
+        }
+
+        private void DrawSenderFilter()
+        {
+            // 送り主のしぼり込み（同じネットワークにあるほかの機械から届くパケットを受け取らない）
+            _settings.trackingSenderFilter = GUILayout.Toggle(_settings.trackingSenderFilter, Loc.T(
+                "Only receive from the senders below (by IP address)",
+                "下の送り主（IP アドレス）からだけ受け取る",
+                "아래 송신자(IP 주소)에게서만 받기",
+                "仅接收来自下方发送端（IP 地址）的数据",
+                "僅接收來自下方傳送端（IP 位址）的資料"));
+
+            // 一覧は入力欄の文字列が変わったときだけ解析し直す
+            if (!string.Equals(_parsedSendersText, _settings.trackingAllowedSenders, StringComparison.Ordinal))
+            {
+                _parsedSendersText = _settings.trackingAllowedSenders;
+                _invalidSenders.Clear();
+                _parsedSenders = SenderFilter.Parse(_parsedSendersText, _invalidSenders);
+            }
+
+            if (_settings.trackingSenderFilter)
+            {
+                _settings.trackingAllowedSenders = GuiControls.TextField(
+                    Loc.T("Allowed senders", "受け取る送り主", "허용할 송신자", "允许的发送端", "允許的傳送端"),
+                    _settings.trackingAllowedSenders, MaxSendersLength);
+
+                // 読めない項目と、空の一覧（この PC からしか受け取らない）を知らせる
+                if (_invalidSenders.Count > 0)
+                {
+                    GuiControls.Warning(Loc.T("Not an IP address", "IP アドレスとして読めません", "IP 주소가 아닙니다",
+                        "不是 IP 地址", "不是 IP 位址") + ": " + string.Join(", ", _invalidSenders));
+                }
+
+                if (_parsedSenders.Count == 0)
+                {
+                    GuiControls.Warning(Loc.T(
+                        "No senders yet: only apps on this PC (127.0.0.1) are received",
+                        "送り主がまだありません。この PC（127.0.0.1）のアプリからしか受け取りません",
+                        "아직 송신자가 없습니다. 이 PC(127.0.0.1)의 앱에서만 받습니다",
+                        "尚无发送端：仅接收此电脑（127.0.0.1）上的应用",
+                        "尚無傳送端：僅接收此電腦（127.0.0.1）上的應用程式"));
+                }
+
+                GuiControls.Hint(Loc.T(
+                    "Separate several addresses with commas. Apps on this PC (127.0.0.1) are always received. A phone's IP address can change when it reconnects to Wi-Fi; if nothing arrives, check the last sender below.",
+                    "複数あるときはカンマで区切ります。この PC（127.0.0.1）のアプリからはいつでも受け取ります。スマートフォンの IP アドレスは Wi-Fi につなぎ直すと変わることがあります。届かなくなったら、下の「最後に届いた送り主」を確かめてください。",
+                    "여러 개는 쉼표로 구분합니다. 이 PC(127.0.0.1)의 앱에서는 항상 받습니다. 스마트폰의 IP 주소는 Wi-Fi에 다시 연결하면 바뀔 수 있습니다. 데이터가 오지 않으면 아래의 '마지막 송신자'를 확인하세요.",
+                    "多个地址用逗号分隔。始终接收此电脑（127.0.0.1）上的应用。手机重新连接 Wi-Fi 后 IP 地址可能会变；收不到数据时请查看下方的“最后的发送端”。",
+                    "多個位址以逗號分隔。一律接收此電腦（127.0.0.1）上的應用程式。手機重新連接 Wi-Fi 後 IP 位址可能會變；收不到資料時請查看下方的「最後的傳送端」。"));
+            }
+
+            // 最後に届いた送り主（ボタンでその送り主だけにしぼる / 一覧へ加える。この PC のアプリはいつでも受け取るので出さない）
+            var info = _tracker as INetworkSenderInfo;
+            string last = info != null ? info.LastSender : string.Empty;
+            if (last.Length > 0)
+            {
+                bool allowed = IPAddress.TryParse(last, out IPAddress lastAddress)
+                    && SenderFilter.IsAllowed(lastAddress, _parsedSenders);
+                bool local = lastAddress != null && IPAddress.IsLoopback(lastAddress);
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(Loc.T("Last sender", "最後に届いた送り主", "마지막 송신자", "最后的发送端", "最後的傳送端")
+                    + ": " + last, GuiControls.Shrinkable);
+                if (!_settings.trackingSenderFilter && !local)
+                {
+                    if (GUILayout.Button(Loc.T("Only this sender", "この送り主だけにする", "이 송신자만", "仅此发送端",
+                            "僅此傳送端"), GuiControls.Shrinkable))
+                    {
+                        _settings.trackingAllowedSenders = last;
+                        _settings.trackingSenderFilter = true;
+                    }
+                }
+                else if (_settings.trackingSenderFilter && !allowed)
+                {
+                    if (GUILayout.Button(Loc.T("Add", "加える", "추가", "添加", "加入"), GuiControls.Shrinkable))
+                    {
+                        _settings.trackingAllowedSenders = SenderFilter.Add(_settings.trackingAllowedSenders, last);
+                    }
+                }
+
+                GUILayout.EndHorizontal();
+            }
+
+            // しぼり込みで捨てた送り主（知らない機械か、つなぎ直して IP アドレスが変わった自分のスマートフォン）
+            if (_settings.trackingSenderFilter && info != null && info.RejectedPackets > 0)
+            {
+                GuiControls.Warning(Loc.T("Ignored data from", "受け取らなかった送り主", "받지 않은 송신자",
+                    "已忽略的发送端", "已忽略的傳送端") + $": {info.LastRejectedSender} ({info.RejectedPackets})");
+            }
         }
 
         private static void DrawFirewallHint()
